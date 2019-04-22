@@ -45,6 +45,7 @@ func subscribeToTopics(topics []string, done chan struct{}) {
 		"enable.partition.eof":            true})
 	if err != nil {
 		utils.Danger(err, "failed to create consumer")
+		return
 	}
 	defer c.Close()
 	utils.P("created consumer")
@@ -81,23 +82,35 @@ func main() {
 	utils.LoadConfig(&config, configFile)
 	kapi := getEtcdClient()
 	done := make(chan struct{})
+	running := 0 // flag
 	watcher := kapi.Watcher(config.etcdPathWatch, &client.WatcherOptions{
 		Recursive: true,
 	})
 
 	for {
-		resp, err := watcher.Next(context.Background())
+		if running == 1 {
+			_, err := watcher.Next(context.Background())
+			if err != nil {
+				utils.Danger(err, "watch event failed")
+				return
+			}
+			done <- struct{}{}
+		}
 		if err != nil {
 			utils.Danger(err, "Watcher event failed")
 		}
-		resp, err = kapi.Get(context.Background(), resp.Node.Key, nil)
+		resp, err := kapi.Get(context.Background(), config.etcdPathWatch, nil)
+		if err != nil {
+			utils.Danger(err, "Can't get from etcd")
+			return
+		}
 		var topics []string
 		for _, topic := range resp.Node.Nodes {
 			topics = append(topics, topic.Value)
 		}
-		done <- struct{}{}
 		for i := 0; i < 100; i++ {
 			go subscribeToTopics(topics, done)
 		}
+		running = 1
 	}
 }
