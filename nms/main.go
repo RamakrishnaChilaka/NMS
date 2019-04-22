@@ -78,7 +78,7 @@ func main() {
 	if err != nil {
 		utils.Danger(err, "Can't open configuration file")
 	}
-	utils.LoadConfig(&config,configFile)
+	utils.LoadConfig(&config, configFile)
 	kapi := getEtcdClient()
 	done := make(chan struct{})
 	watcher := kapi.Watcher(config.etcdPathWatch, &client.WatcherOptions{
