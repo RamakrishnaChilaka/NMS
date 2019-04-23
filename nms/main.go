@@ -33,7 +33,7 @@ func getEtcdClient() (kapi client.KeysAPI) {
 	return
 }
 
-func subscribeToTopics(topics []string, done chan struct{}) {
+func subscribeToTopics(ctx context.Context, topics []string) {
 	c, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers":               config.KafkaBroker,
 		"broker.address.family":           "v4",
@@ -53,7 +53,7 @@ func subscribeToTopics(topics []string, done chan struct{}) {
 	run := true
 	for run == true {
 		select {
-		case <-done:
+		case <-ctx.Done():
 			run = false
 		case ev := <-c.Events():
 			switch e := ev.(type) {
@@ -81,11 +81,13 @@ func main() {
 	}
 	utils.LoadConfig(&config, configFile)
 	kapi := getEtcdClient()
-	done := make(chan struct{})
 	running := 0 // flag
 	watcher := kapi.Watcher(config.etcdPathWatch, &client.WatcherOptions{
 		Recursive: true,
 	})
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
 
 	for {
 		if running == 1 {
@@ -94,7 +96,7 @@ func main() {
 				utils.Danger(err, "watch event failed")
 				return
 			}
-			done <- struct{}{}
+			cancelFunc()
 		}
 		if err != nil {
 			utils.Danger(err, "Watcher event failed")
@@ -109,7 +111,7 @@ func main() {
 			topics = append(topics, topic.Value)
 		}
 		for i := 0; i < 100; i++ {
-			go subscribeToTopics(topics, done)
+			go subscribeToTopics(ctx, topics)
 		}
 		running = 1
 	}
