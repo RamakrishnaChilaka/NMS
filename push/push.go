@@ -1,6 +1,7 @@
 package push
 
 import (
+	"context"
 	"log"
 
 	"github.com/go-stomp/stomp"
@@ -12,22 +13,17 @@ func failOnError(err error, msg string) {
 	}
 }
 
-// PushToRabbitMQ exported function
-func PushToRabbitMQ(strMsg string) {
-	conn, err := stomp.Dial("tcp", "localhost:61613",
-		stomp.ConnOpt.Login("guest", "guest"),
+// GetRabbitMqConnection returns new RabbitMq Connection
+func GetRabbitMqConnection(addr, username, password string) (conn *stomp.Conn, sub *stomp.Subscription, err error) {
+	conn, err = stomp.Dial("tcp", addr,
+		stomp.ConnOpt.Login(username, password),
 		stomp.ConnOpt.Host("/"))
-	failOnError(err, "Stomp dailing failed")
-	sub, err := conn.Subscribe("/queue/test", stomp.AckClient)
+	sub, err = conn.Subscribe("/queue/test", stomp.AckAuto)
 	failOnError(err, "Subscription to test failed")
-	for {
-		msg := <-sub.C
-		log.Printf("Recieved a message: %s", msg.Body)
-		replyToHeader := msg.Header.Get("reply-to")
-		log.Printf("Recieved a header: %s", replyToHeader)
-		conn.Send(replyToHeader, "text/plain", []byte(strMsg))
-		//conn.Send(replyToHeader, "text/plain", msg.Body)
-		err = conn.Ack(msg)
-		failOnError(err, "Failed to acknowledge the message")
-	}
+	return
+}
+
+// RabbitMQ exported function
+func RabbitMQ(ctx context.Context, conn *stomp.Conn, message []byte, tempqueue string) {
+	conn.Send(tempqueue, "text/plain", []byte(message))
 }
