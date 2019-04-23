@@ -7,15 +7,14 @@ import (
 	"os"
 )
 
-
 var logger *log.Logger
 
-// Convenience function for printing to stdout
+// P Convenience function for printing to stdout
 func P(a ...interface{}) {
 	fmt.Println(a...)
 }
 
-
+// LoadConfig loads configuration into config struct
 func LoadConfig(config interface{}, file *os.File) {
 	decoder := json.NewDecoder(file)
 	err := decoder.Decode(config)
@@ -24,17 +23,19 @@ func LoadConfig(config interface{}, file *os.File) {
 	}
 }
 
-// for logging
+// Info for logging
 func Info(args ...interface{}) {
 	logger.SetPrefix("INFO ")
 	logger.Println(args...)
 }
 
+// Danger logging
 func Danger(args ...interface{}) {
 	logger.SetPrefix("ERROR ")
 	logger.Println(args...)
 }
 
+// Warning logging
 func Warning(args ...interface{}) {
 	logger.SetPrefix("WARNING ")
 	logger.Println(args...)

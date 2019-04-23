@@ -4,7 +4,6 @@ import (
 	"context"
 	"nference/push"
 	"nference/utils"
-	"os"
 	"time"
 
 	"github.com/go-stomp/stomp"
@@ -17,7 +16,7 @@ type configuration struct {
 	etcdAddress      string
 	etcdPathWatch    string
 	kafkaGroups      string
-	KafkaBroker      string
+	kafkaBroker      string
 	rabbitMqAddress  string
 	rabbitMqUserName string
 	rabbitMqPassword string
@@ -44,7 +43,7 @@ func getEtcdClient() (kapi client.KeysAPI) {
 
 func subscribeToTopics(ctx context.Context, topics []string) {
 	c, err := kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers":               config.KafkaBroker,
+		"bootstrap.servers":               config.kafkaBroker,
 		"broker.address.family":           "v4",
 		"group.id":                        config.kafkaGroups,
 		"session.timeout.ms":              6000,
@@ -64,6 +63,7 @@ func subscribeToTopics(ctx context.Context, topics []string) {
 		select {
 		case <-ctx.Done():
 			run = false
+			utils.P("context got cancelled")
 		case ev := <-c.Events():
 			switch e := ev.(type) {
 			case kafka.AssignedPartitions:
@@ -73,13 +73,18 @@ func subscribeToTopics(ctx context.Context, topics []string) {
 			case *kafka.Message:
 				// do something with this message
 				// unparse it and extract ClientId, either through kafka headers
-				utils.Info("Message partition is ", e.TopicPartition, " Message Value is ", e.Value)
+				utils.P("Message partition is ", e.TopicPartition, " Message Value is ", string(e.Value))
 				clientID := "123" // hardCoded for now
-				push.RabbitMQ(ctx, rabbitMqConn, e.Value, clients[clientID])
-
+				utils.P(clients)
+				if clientQ, queueExists := clients[clientID]; queueExists {
+					utils.P("client is connected, since tempq exists")
+					push.RabbitMQ(ctx, rabbitMqConn, e.Value, clientQ)
+				} else {
+					// this means that client is not connected
+					// do some default behaviour here to ensure gauranteed delivery
+				}
 			case kafka.PartitionEOF:
 				utils.P("Reached ", e)
-				return
 			case kafka.Error:
 				utils.Danger(e, "Kafka error!")
 			}
@@ -88,11 +93,17 @@ func subscribeToTopics(ctx context.Context, topics []string) {
 }
 
 func main() {
-	configFile, err := os.Open("./config.json")
-	if err != nil {
-		utils.Danger(err, "Can't open configuration file")
+
+	config = configuration{
+		etcdAddress:      "http://127.0.0.1:2379",
+		etcdPathWatch:    "/topics",
+		kafkaGroups:      "kafkaGID",
+		kafkaBroker:      "localhost",
+		rabbitMqAddress:  "localhost:61613",
+		rabbitMqUserName: "guest",
+		rabbitMqPassword: "guest",
 	}
-	utils.LoadConfig(&config, configFile)
+	utils.P(config)
 	kapi := getEtcdClient()
 	running := 0 // flag
 	watcher := kapi.Watcher(config.etcdPathWatch, &client.WatcherOptions{
@@ -103,8 +114,9 @@ func main() {
 	go func() {
 		for {
 			tempMessage := <-rabbitMqSub.C
+			utils.P("Recieved message in queue subscriptions", tempMessage)
 			replyToHeader := tempMessage.Header.Get("reply-to")
-			clientID := tempMessage.Header.Get("clientId")
+			clientID := tempMessage.Header.Get("clientID")
 			clients[clientID] = replyToHeader
 		}
 	}()
@@ -113,23 +125,25 @@ func main() {
 
 	for {
 		if running == 1 {
+			utils.P("waiting for watcher event")
 			_, err := watcher.Next(context.Background()) // blocking operation
 			if err != nil {
 				utils.Danger(err, "watch event failed")
-				return
 			}
 			cancelFunc()
 		}
 		resp, err := kapi.Get(context.Background(), config.etcdPathWatch, nil)
+		utils.P(resp.Node.Nodes, " these are Nodes")
 		if err != nil {
 			utils.Danger(err, "Can't get from etcd")
 			return
 		}
 		var topics []string
 		for _, topic := range resp.Node.Nodes {
-			topics = append(topics, topic.Value)
+			topics = append(topics, topic.Key[8:])
 		}
-		for i := 0; i < 100; i++ {
+		utils.P(topics, " These are topics")
+		for i := 0; i < 5; i++ {
 			go subscribeToTopics(ctx, topics)
 		}
 		running = 1
