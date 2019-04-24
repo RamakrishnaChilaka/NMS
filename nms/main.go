@@ -72,7 +72,7 @@ func subscribeToTopics(ctx context.Context, topics []string) {
 				// do something with this message
 				// unparse it and extract ClientId, either through kafka headers
 				utils.P("Message partition is ", e.TopicPartition, " Message Value is ", string(e.Value))
-				clientID := "client123" // hardCoded for now
+				clientID := "client123" // hardCoded for now, Need to ensure Gauranteed delivery
 				push.RabbitMQ(ctx, rabbitMqConn, e.Value, "/topic/"+clientID)
 			case kafka.PartitionEOF:
 				utils.P("Reached ", e)
