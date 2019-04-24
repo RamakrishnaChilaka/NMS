@@ -24,6 +24,6 @@ func GetRabbitMqConnection(addr, username, password string) (conn *stomp.Conn, s
 }
 
 // RabbitMQ exported function
-func RabbitMQ(ctx context.Context, conn *stomp.Conn, message []byte, tempqueue string) {
-	conn.Send(tempqueue, "text/plain", []byte(message))
+func RabbitMQ(ctx context.Context, conn *stomp.Conn, message []byte, destination string) {
+	conn.Send(destination, "text/plain", []byte(message))
 }
