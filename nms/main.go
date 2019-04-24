@@ -24,8 +24,6 @@ type configuration struct {
 
 var config configuration
 var rabbitMqConn *stomp.Conn
-var rabbitMqSub *stomp.Subscription
-var clients = make(map[string]string)
 
 func getEtcdClient() (kapi client.KeysAPI) {
 	cfg := client.Config{
@@ -74,15 +72,8 @@ func subscribeToTopics(ctx context.Context, topics []string) {
 				// do something with this message
 				// unparse it and extract ClientId, either through kafka headers
 				utils.P("Message partition is ", e.TopicPartition, " Message Value is ", string(e.Value))
-				clientID := "123" // hardCoded for now
-				utils.P(clients)
-				if clientQ, queueExists := clients[clientID]; queueExists {
-					utils.P("client is connected, since tempq exists")
-					push.RabbitMQ(ctx, rabbitMqConn, e.Value, clientQ)
-				} else {
-					// this means that client is not connected
-					// do some default behaviour here to ensure gauranteed delivery
-				}
+				clientID := "client123" // hardCoded for now
+				push.RabbitMQ(ctx, rabbitMqConn, e.Value, "/topic/"+clientID)
 			case kafka.PartitionEOF:
 				utils.P("Reached ", e)
 			case kafka.Error:
@@ -110,16 +101,7 @@ func main() {
 		Recursive: true,
 	})
 	// RabbitMqConnection
-	rabbitMqConn, rabbitMqSub, _ = push.GetRabbitMqConnection(config.rabbitMqAddress, config.rabbitMqUserName, config.rabbitMqPassword)
-	go func() {
-		for {
-			tempMessage := <-rabbitMqSub.C
-			utils.P("Recieved message in queue subscriptions", tempMessage)
-			replyToHeader := tempMessage.Header.Get("reply-to")
-			clientID := tempMessage.Header.Get("clientID")
-			clients[clientID] = replyToHeader
-		}
-	}()
+	rabbitMqConn, _, _ = push.GetRabbitMqConnection(config.rabbitMqAddress, config.rabbitMqUserName, config.rabbitMqPassword)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
